@@ -870,18 +870,28 @@ func searchRecommendedEstateWithChair(c echo.Context) error {
 		params = []int64{w, minHD, h, minWD, d, minHW}
 	} else {
 		// some clause was eliminated!
+		clauses = []string{clause, clause}
+
 		if clause1Reqd && clause2Reqd {
-			clauses = []string{clause, clause}
 			params = []int64{w, minHD, h, minWD}
 		} else if clause2Reqd && clause3Reqd {
-			clauses = []string{clause, clause}
 			params = []int64{h, minWD, d, minHW}
 		} else if clause1Reqd && clause3Reqd {
-			clauses = []string{clause, clause}
 			params = []int64{w, minHD, d, minHW}
 		}
 
-		// TODO: We can check once again to see if it's possible to eliminate something
+		// we can check the remaining 2 to see if one of them can also be eliminated
+		clause01Reqd, clause23Reqd := eliminateClauses(params[0], params[1], params[2], params[3])
+
+		if !clause01Reqd {
+			clauses = []string{clause}
+			params = []int64{params[2], params[3]}
+		}
+
+		if !clause23Reqd {
+			clauses = []string{clause}
+			params = []int64{params[0], params[1]}
+		}
 	}
 
 	query = `SELECT * FROM estate WHERE `
