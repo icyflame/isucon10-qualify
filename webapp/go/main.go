@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -837,8 +838,19 @@ func searchRecommendedEstateWithChair(c echo.Context) error {
 	w := chair.Width
 	h := chair.Height
 	d := chair.Depth
-	query = `SELECT * FROM estate WHERE (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) OR (door_width >= ? AND door_height >= ?) ORDER BY popularity DESC, id ASC LIMIT ?`
-	err = db.Select(&estates, query, w, h, w, d, h, w, h, d, d, w, d, h, Limit)
+
+	minHD := int64(math.Min(float64(h), float64(d)))
+	minWD := int64(math.Min(float64(w), float64(d)))
+	minHW := int64(math.Min(float64(h), float64(w)))
+
+	query = `SELECT * FROM estate WHERE
+
+(door_width >= ? AND door_height >= ?) OR
+(door_width >= ? AND door_height >= ?) OR
+(door_width >= ? AND door_height >= ?)
+
+ORDER BY popularity DESC, id ASC LIMIT ?`
+	err = db.Select(&estates, query, w, minHD, h, minWD, d, minHW, Limit)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, EstateListResponse{[]Estate{}})
