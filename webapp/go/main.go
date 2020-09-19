@@ -835,6 +835,9 @@ func searchRecommendedEstateWithChair(c echo.Context) error {
 	}
 
 	var estates []Estate
+	var params []int64
+	var clauses []string
+
 	w := chair.Width
 	h := chair.Height
 	d := chair.Depth
@@ -843,14 +846,55 @@ func searchRecommendedEstateWithChair(c echo.Context) error {
 	minWD := int64(math.Min(float64(w), float64(d)))
 	minHW := int64(math.Min(float64(h), float64(w)))
 
-	query = `SELECT * FROM estate WHERE
+	clause := `(door_width >= ? AND door_height >= ?)`
 
-(door_width >= ? AND door_height >= ?) OR
-(door_width >= ? AND door_height >= ?) OR
-(door_width >= ? AND door_height >= ?)
+	var clause1Reqd, clause2Reqd, clause3Reqd bool
 
-ORDER BY popularity DESC, id ASC LIMIT ?`
-	err = db.Select(&estates, query, w, minHD, h, minWD, d, minHW, Limit)
+	clause1Reqd = true
+	clause2Reqd = true
+	clause3Reqd = true
+
+	// Try to eliminate a single clause first
+	clause1Reqd, clause2Reqd = eliminateClauses(w, minHD, h, minWD)
+	if clause1Reqd && clause2Reqd {
+		clause2Reqd, clause3Reqd = eliminateClauses(h, minWD, d, minHW)
+		if clause2Reqd && clause3Reqd {
+			clause1Reqd, clause3Reqd = eliminateClauses(w, minHD, d, minHW)
+		}
+	}
+
+	// Check if any clause could be eliminated
+	if clause1Reqd && clause2Reqd && clause3Reqd {
+		// No clause could be eliminated
+		clauses = []string{clause, clause, clause}
+		params = []int64{w, minHD, h, minWD, d, minHW}
+	} else {
+		// some clause was eliminated!
+		if clause1Reqd && clause2Reqd {
+			clauses = []string{clause, clause}
+			params = []int64{w, minHD, h, minWD}
+		} else if clause2Reqd && clause3Reqd {
+			clauses = []string{clause, clause}
+			params = []int64{h, minWD, d, minHW}
+		} else if clause1Reqd && clause3Reqd {
+			clauses = []string{clause, clause}
+			params = []int64{w, minHD, d, minHW}
+		}
+
+		// TODO: We can check once again to see if it's possible to eliminate something
+	}
+
+	query = `SELECT * FROM estate WHERE `
+	whereCondition := strings.Join(clauses, " OR ")
+	queryOrder := ` ORDER BY popularity DESC, id ASC LIMIT ?`
+
+	query = query + whereCondition + queryOrder
+
+	params = append(params, Limit)
+
+	paramsInterface := int64sToInterface(params)
+
+	err = db.Select(&estates, query, paramsInterface...)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, EstateListResponse{[]Estate{}})
@@ -993,4 +1037,23 @@ func (cs Coordinates) coordinatesToText() string {
 		points = append(points, fmt.Sprintf("%f %f", c.Latitude, c.Longitude))
 	}
 	return fmt.Sprintf("'POLYGON((%s))'", strings.Join(points, ","))
+}
+
+// eliminateClauses ...
+func eliminateClauses(a, b, c, d int64) (bool, bool) {
+	if a >= c && b >= d {
+		return false, true
+	} else if a <= c && b <= d {
+		return true, false
+	}
+
+	return true, true
+}
+
+func int64sToInterface(t []int64) []interface{} {
+	var b []interface{}
+	for _, v := range t {
+		b = append(b, interface{}(v))
+	}
+	return b
 }
