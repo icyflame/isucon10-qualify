@@ -875,11 +875,18 @@ func searchEstateNazotte(c echo.Context) error {
 	}
 
 	estatesInPolygon := []Estate{}
+
+	// We don't need a DB query here; it is simply checking if the estate.{Lat,Lng} point is within the polygon defined by the given points
 	for _, estate := range estatesInBoundingBox {
 		validatedEstate := Estate{}
 
 		point := fmt.Sprintf("'POINT(%f %f)'", estate.Latitude, estate.Longitude)
 		query := fmt.Sprintf(`SELECT * FROM estate WHERE id = ? AND ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
+
+		// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
+		// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText('POLYGON((1 1, 1 -1, -1 1, -1 -1))'), ST_PointFromText('POINT(0 0)'))`, coordinates.coordinatesToText(), point)
+		// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText('POLYGON ((30 10, 40 40, 20 40, 10 20, 30 10))'), ST_PointFromText('POINT (0 0)'))`, coordinates.coordinatesToText(), point)
+
 		err = db.Get(&validatedEstate, query, estate.ID)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -922,9 +929,9 @@ func postEstateRequestDocument(c echo.Context) error {
 		return c.NoContent(http.StatusBadRequest)
 	}
 
-	estate := Estate{}
-	query := `SELECT * FROM estate WHERE id = ?`
-	err = db.Get(&estate, query, id)
+	var result int
+	query := `SELECT 1 FROM estate WHERE id = ?`
+	err = db.Get(&result, query, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.NoContent(http.StatusNotFound)
