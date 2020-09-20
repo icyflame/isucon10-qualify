@@ -19,7 +19,6 @@ import (
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/labstack/gommon/log"
-	"golang.org/x/sync/errgroup"
 )
 
 const Limit = 20
@@ -970,54 +969,34 @@ func searchEstateNazotte(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	var eg errgroup.Group
-	acceptedEstates := make([]bool, len(estatesInBoundingBox))
-
-	internalServerError := fmt.Errorf("internal server errror")
+	estatesInPolygon := []Estate{}
 
 	// We don't need a DB query here; it is simply checking if the estate.{Lat,Lng} point is within the polygon defined by the given points
-	for i, estate := range estatesInBoundingBox {
-		i, estate := i, estate
-		eg.Go(func() error {
-			point := fmt.Sprintf("'POINT(%f %f)'", estate.Latitude, estate.Longitude)
-			query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
+	for _, estate := range estatesInBoundingBox {
+		point := fmt.Sprintf("'POINT(%f %f)'", estate.Latitude, estate.Longitude)
+		query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
 
-			// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
-			// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText('POLYGON((1 1, 1 -1, -1 1, -1 -1))'), ST_PointFromText('POINT(0 0)'))`, coordinates.coordinatesToText(), point)
-			// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText('POLYGON ((30 10, 40 40, 20 40, 10 20, 30 10))'), ST_PointFromText('POINT (0 0)'))`, coordinates.coordinatesToText(), point)
+		// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
+		// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText('POLYGON((1 1, 1 -1, -1 1, -1 -1))'), ST_PointFromText('POINT(0 0)'))`, coordinates.coordinatesToText(), point)
+		// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText('POLYGON ((30 10, 40 40, 20 40, 10 20, 30 10))'), ST_PointFromText('POINT (0 0)'))`, coordinates.coordinatesToText(), point)
 
-			var result int64
-			err = db.Get(&result, query)
-			if err != nil {
-				if err == sql.ErrNoRows {
-					return nil
-				} else {
-					return internalServerError
-				}
+		var result int64
+		err = db.Get(&result, query)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
 			} else {
-				if result == 0 {
-					return nil
-				}
-
-				acceptedEstates[i] = true
-				return nil
+				c.Echo().Logger.Errorf("db access is failed on executing validate if estate is in polygon : %v", err)
+				return c.NoContent(http.StatusInternalServerError)
 			}
-		})
-	}
-
-	err = eg.Wait()
-	if err == internalServerError {
-		c.Echo().Logger.Errorf("db access is failed on executing validate if estate is in polygon : %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	var estatesInPolygon []Estate
-	for i, estate := range estatesInBoundingBox {
-		if acceptedEstates[i] {
+		} else {
+			if result == 0 {
+				continue
+			}
 			estatesInPolygon = append(estatesInPolygon, estate)
-		}
-		if len(estatesInPolygon) == NazotteLimit {
-			break
+			if len(estatesInPolygon) == NazotteLimit {
+				break
+			}
 		}
 	}
 
