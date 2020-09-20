@@ -46,8 +46,3 @@ CREATE TABLE isuumo.chair
 );
 CREATE INDEX idx_price ON isuumo.chair(price);
 CREATE INDEX idx_popularity ON isuumo.chair(popularity);
-CREATE INDEX idx_width ON isuumo.chair(width);
-CREATE INDEX idx_height ON isuumo.chair(height);
-CREATE INDEX idx_depth ON isuumo.chair(depth);
-CREATE INDEX idx_kind ON isuumo.chair(kind);
-CREATE INDEX idx_color ON isuumo.chair(color);
