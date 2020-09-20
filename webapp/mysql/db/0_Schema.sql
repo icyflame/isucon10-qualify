@@ -24,6 +24,10 @@ CREATE INDEX idx_popularity ON isuumo.estate(popularity);
 CREATE INDEX idx_door_width ON isuumo.estate(door_width);
 CREATE INDEX idx_door_height ON isuumo.estate(door_height);
 
+CREATE INDEX idx_latitude ON isuumo.estate(latitude);
+CREATE INDEX idx_longitude ON isuumo.estate(longitude);
+CREATE INDEX idx_latitude_longitude ON isuumo.estate(latitude, longitude);
+
 CREATE TABLE isuumo.chair
 (
     id          INTEGER         NOT NULL PRIMARY KEY,
