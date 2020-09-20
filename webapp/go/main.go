@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/labstack/gommon/log"
+	"golang.org/x/sync/errgroup"
 )
 
 const Limit = 20
@@ -804,18 +805,29 @@ func searchEstates(c echo.Context) error {
 	countQuery := "SELECT COUNT(*) FROM estate WHERE "
 	searchCondition := strings.Join(conditions, " AND ")
 	limitOffset := " ORDER BY popularity DESC, id ASC LIMIT ? OFFSET ?"
+	countParams := params
+	selectParams := append(params, perPage, page*perPage)
 
-	var res EstateSearchResponse
-	err = db.Get(&res.Count, countQuery+searchCondition, params...)
-	if err != nil {
-		c.Logger().Errorf("searchEstates DB execution error : %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	var eg errgroup.Group
 
-	estates := []Estate{}
-	params = append(params, perPage, page*perPage)
-	err = db.Select(&estates, searchQuery+searchCondition+limitOffset, params...)
-	if err != nil {
+	var count int64
+	var estates []Estate
+
+	eg.Go(func() error {
+		e := []Estate{}
+		err := db.Select(&e, searchQuery+searchCondition+limitOffset, selectParams...)
+		estates = e
+		return err
+	})
+
+	eg.Go(func() error {
+		var c int64
+		err := db.Get(&c, countQuery+searchCondition, countParams...)
+		count = c
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, EstateSearchResponse{Count: 0, Estates: []Estate{}})
 		}
@@ -823,6 +835,8 @@ func searchEstates(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	var res EstateSearchResponse
+	res.Count = count
 	res.Estates = estates
 
 	return c.JSON(http.StatusOK, res)
