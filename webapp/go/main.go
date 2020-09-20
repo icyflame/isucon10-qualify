@@ -523,18 +523,29 @@ func searchChairs(c echo.Context) error {
 	countQuery := "SELECT COUNT(*) FROM chair WHERE "
 	searchCondition := strings.Join(conditions, " AND ")
 	limitOffset := " ORDER BY popularity DESC, id ASC LIMIT ? OFFSET ?"
+	countParams := params
+	selectParams := append(params, perPage, page*perPage)
 
-	var res ChairSearchResponse
-	err = db.Get(&res.Count, countQuery+searchCondition, params...)
-	if err != nil {
-		c.Logger().Errorf("searchChairs DB execution error : %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	var eg errgroup.Group
 
-	chairs := []Chair{}
-	params = append(params, perPage, page*perPage)
-	err = db.Select(&chairs, searchQuery+searchCondition+limitOffset, params...)
-	if err != nil {
+	var count int64
+	var chairs []Chair
+
+	eg.Go(func() error {
+		c := []Chair{}
+		err := db.Select(&c, searchQuery+searchCondition+limitOffset, selectParams...)
+		chairs = c
+		return err
+	})
+
+	eg.Go(func() error {
+		var c int64
+		err := db.Get(&c, countQuery+searchCondition, countParams...)
+		count = c
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, ChairSearchResponse{Count: 0, Chairs: []Chair{}})
 		}
@@ -542,6 +553,8 @@ func searchChairs(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	var res ChairSearchResponse
+	res.Count = count
 	res.Chairs = chairs
 
 	return c.JSON(http.StatusOK, res)
