@@ -970,20 +970,17 @@ func searchEstateNazotte(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	polygonWKTRep := coordinates.coordinatesToText()
-
 	var eg errgroup.Group
-	acceptedEstates := make([]int, len(estatesInBoundingBox))
+	acceptedEstates := make([]bool, len(estatesInBoundingBox))
 
 	internalServerError := fmt.Errorf("internal server errror")
-	doneCollectionError := fmt.Errorf("done collection error")
 
 	// We don't need a DB query here; it is simply checking if the estate.{Lat,Lng} point is within the polygon defined by the given points
 	for i, estate := range estatesInBoundingBox {
 		i, estate := i, estate
 		eg.Go(func() error {
 			point := fmt.Sprintf("'POINT(%f %f)'", estate.Latitude, estate.Longitude)
-			query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, polygonWKTRep, point)
+			query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
 
 			// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText(%s), ST_GeomFromText(%s))`, coordinates.coordinatesToText(), point)
 			// query := fmt.Sprintf(`SELECT ST_Contains(ST_PolygonFromText('POLYGON((1 1, 1 -1, -1 1, -1 -1))'), ST_PointFromText('POINT(0 0)'))`, coordinates.coordinatesToText(), point)
@@ -992,20 +989,19 @@ func searchEstateNazotte(c echo.Context) error {
 			var result int64
 			err = db.Get(&result, query)
 			if err != nil {
-				return internalServerError
+				if err == sql.ErrNoRows {
+					return nil
+				} else {
+					return internalServerError
+				}
 			} else {
 				if result == 0 {
-					acceptedEstates[i] = -1
-				} else {
-					acceptedEstates[i] = 1
+					return nil
 				}
 
-				if checkDone(acceptedEstates) {
-					return doneCollectionError
-				}
+				acceptedEstates[i] = true
+				return nil
 			}
-
-			return nil
 		})
 	}
 
@@ -1017,7 +1013,7 @@ func searchEstateNazotte(c echo.Context) error {
 
 	var estatesInPolygon []Estate
 	for i, estate := range estatesInBoundingBox {
-		if acceptedEstates[i] == 1 {
+		if acceptedEstates[i] {
 			estatesInPolygon = append(estatesInPolygon, estate)
 		}
 		if len(estatesInPolygon) == NazotteLimit {
@@ -1122,23 +1118,4 @@ func int64sToInterface(t []int64) []interface{} {
 		b = append(b, interface{}(v))
 	}
 	return b
-}
-
-// checkDone ...
-func checkDone(arr []int) bool {
-	accepted := 0
-	for _, v := range arr {
-		if v == 0 {
-			return false
-		}
-
-		if v == 1 {
-			accepted++
-			if accepted == NazotteLimit {
-				return true
-			}
-		}
-	}
-
-	return false
 }
