@@ -1,0 +1,18 @@
+[Unit]
+Description=isuumo-{{WORKER_NUMBER}}.go
+
+[Service]
+WorkingDirectory=/home/isucon/isuumo/webapp/go
+EnvironmentFile=/home/isucon/env-{{WORKER_NUMBER}}.sh
+PIDFile=/home/isucon/isuumo/webapp/go/server-{{WORKER_NUMBER}}.pid
+
+User=isucon
+Group=isucon
+ExecStart=/home/isucon/isuumo/webapp/go/isuumo
+ExecStop=/bin/kill -s QUIT $MAINPID
+
+Restart   = always
+Type      = simple
+
+[Install]
+WantedBy=multi-user.target
